@@ -4,6 +4,21 @@ import { createPageUrl } from "@/utils";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
+function normalizeItems(allItems) {
+  if (!Array.isArray(allItems)) return [];
+
+  return allItems.flatMap((group) => {
+    if (Array.isArray(group?.items)) {
+      return group.items.map((item) => ({
+        ...item,
+        groupLabel: group.label || group.name || "Section",
+      }));
+    }
+
+    return [{ ...group, groupLabel: group?.groupLabel || group?.group || "Section" }];
+  });
+}
+
 function QuickSearch({ allItems, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -11,11 +26,17 @@ function QuickSearch({ allItems, onNavigate }) {
   const containerRef = useRef(null);
   const navigate = useNavigate();
 
+  const items = useMemo(() => normalizeItems(allItems), [allItems]);
+
   const results = useMemo(() => {
-    if (!query.trim()) return allItems.slice(0, 6);
+    if (!query.trim()) return items.slice(0, 6);
+
     const q = query.toLowerCase();
-    return allItems.filter((i) => i.name.toLowerCase().includes(q));
-  }, [query, allItems]);
+    return items.filter((i) => {
+      const haystack = [i.name, i.groupLabel, i.label].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [query, items]);
 
   useEffect(() => {
     function handleOutside(e) {
@@ -23,15 +44,18 @@ function QuickSearch({ allItems, onNavigate }) {
         setOpen(false);
       }
     }
+
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, []);
 
   useEffect(() => {
-    setHighlightIndex(0);
-  }, [results.length, open]);
+    setHighlightIndex(Math.min(highlightIndex, Math.max(results.length - 1, 0)));
+  }, [results.length]);
 
   function go(item) {
+    if (!item?.href) return;
+
     navigate(createPageUrl(item.href));
     setOpen(false);
     setQuery("");
@@ -98,19 +122,27 @@ function QuickSearch({ allItems, onNavigate }) {
             return (
               <button
                 id={`qs-${item.href}`}
-                key={item.href}
-                onMouseDown={(e) => e.preventDefault()} // keep click from blurring input before handler fires
+                key={`${item.href}-${idx}`}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => go(item)}
                 onMouseEnter={() => setHighlightIndex(idx)}
                 role="option"
                 aria-selected={active}
                 className={cn(
-                  "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm",
+                  "flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm",
                   active ? "bg-muted/70" : "hover:bg-muted"
                 )}
               >
-                <item.icon className="h-4 w-4 text-muted-foreground" />
-                {item.name}
+                <span className="flex items-center gap-3">
+                  <item.icon className="h-4 w-4 text-muted-foreground" />
+                  <span>{item.name}</span>
+                </span>
+
+                {item.groupLabel && (
+                  <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {item.groupLabel}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -119,3 +151,5 @@ function QuickSearch({ allItems, onNavigate }) {
     </div>
   );
 }
+
+export default QuickSearch;
